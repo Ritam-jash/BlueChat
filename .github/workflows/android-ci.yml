@@ -1,0 +1,85 @@
+name: Android CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build and Test
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+      
+    - name: Set up JDK 17
+      uses: actions/setup-java@v3
+      with:
+        java-version: '17'
+        distribution: 'temurin'
+        cache: 'gradle'
+    
+    - name: Validate Gradle Wrapper
+      uses: gradle/wrapper-validation-action@v2
+      
+    - name: Grant execute permission for gradlew
+      run: chmod +x gradlew
+      
+    - name: Set up Android SDK
+      uses: android-actions/setup-android@v2
+      
+    - name: Run unit tests
+      run: ./gradlew testDebugUnitTest --stacktrace
+      
+    - name: Run instrumentation tests
+      uses: reactivecircus/android-emulator-runner@v2
+      with:
+        api-level: 33
+        arch: x86_64
+        profile: Nexus 6
+        script: |
+          ./gradlew connectedAndroidTest -Pandroid.testInstrumentationRunnerArguments.notAnnotation=androidx.test.filters.LargeTest
+          
+    - name: Upload test results
+      if: always()
+      uses: actions/upload-artifact@v3
+      with:
+        name: test-results
+        path: |
+          **/build/reports/tests/
+          **/build/outputs/androidTest-results/**
+          **/build/outputs/unit_test_results/**
+          **/build/outputs/code-coverage/connected/
+          
+    - name: Build debug APK
+      run: ./gradlew assembleDebug
+      
+    - name: Build release APK
+      if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop'
+      run: |
+        echo "${{ secrets.KEYSTORE_FILE }}" > keystore.jks
+        ./gradlew assembleRelease \
+          -Pandroid.injected.signing.store.file=$GITHUB_WORKSPACE/keystore.jks \
+          -Pandroid.injected.signing.store.password=${{ secrets.KEYSTORE_PASSWORD }} \
+          -Pandroid.injected.signing.key.alias=${{ secrets.KEY_ALIAS }} \
+          -Pandroid.injected.signing.key.password=${{ secrets.KEY_PASSWORD }}
+      
+    - name: Upload APK artifacts
+      if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop'
+      uses: actions/upload-artifact@v3
+      with:
+        name: app-builds
+        path: |
+          app/build/outputs/apk/debug/app-debug.apk
+          app/build/outputs/apk/release/app-release-unsigned.apk
+          
+    - name: Codecov
+      uses: codecov/codecov-action@v3
+      with:
+        file: app/build/reports/coverage/debug/report.xml
+        fail_ci_if_error: false
+        verbose: true
