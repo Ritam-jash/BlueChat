@@ -7,12 +7,6 @@ on:
     branches: [ main, develop ]
   workflow_dispatch:
 
-env:
-  KEYSTORE_FILE: ${{ secrets.KEYSTORE_FILE }}
-  KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
-  KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
-  KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-
 jobs:
   build:
     name: Build and Test
@@ -40,6 +34,11 @@ jobs:
       
     - name: Build release APK
       if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop'
+      env:
+        KEYSTORE_FILE: ${{ secrets.KEYSTORE_FILE }}
+        KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+        KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+        KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
       run: |
         echo "$KEYSTORE_FILE" | base64 -d > keystore.jks
         ./gradlew assembleRelease \
@@ -47,12 +46,11 @@ jobs:
           -Pandroid.injected.signing.store.password=$KEYSTORE_PASSWORD \
           -Pandroid.injected.signing.key.alias=$KEY_ALIAS \
           -Pandroid.injected.signing.key.password=$KEY_PASSWORD
-        # Clean up the keystore file immediately after use
         rm -f keystore.jks
       
     - name: Upload APK artifacts
       if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop'
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: app-builds
         path: |
